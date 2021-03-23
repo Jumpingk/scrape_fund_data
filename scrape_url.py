@@ -20,7 +20,20 @@ def get_proxies():
     proxies = []
     for ip in ip_data:
         proxies.append({'http': ip})
-    return proxies
+    return random.choice(proxies)
+
+def update_proxies(proxy):
+    '''
+    更新proxies_temp.json文件，避免再次选中爬取过程中出现的失效代理
+    '''
+    new_ip_data = []
+    with open('proxies_temp.json', 'r', encoding='utf-8') as f1:
+        ip_data = json.load(f1)
+        for ip in ip_data:
+            if ip != proxy['http']:
+                new_ip_data.append(ip)
+    with open('proxies_temp.json', 'w', encoding='utf-8') as f2:
+        json.dump(new_ip_data, f2, indent=4)
 
 # parent_headers 基金列表页的请求头
 parent_headers = {
@@ -63,7 +76,14 @@ def params_info(type_info, pageIndex, callback):
     return params
 
 def scrape_data(params_infoes, proxies):
-    fund_list_res = requests.get(url=parse.urljoin(api_base_url, 'FundGuZhi/GetFundGZList'), headers=parent_headers, proxies=proxies, params=params_infoes, timeout=20)
+    
+    try:
+        fund_list_res = requests.get(url=parse.urljoin(api_base_url, 'FundGuZhi/GetFundGZList'), headers=parent_headers, proxies=proxies, params=params_infoes, timeout=25)
+    except:
+        global proxy
+        update_proxies(proxy=proxies)
+        proxy = get_proxies()
+        fund_list_res = requests.get(url=parse.urljoin(api_base_url, 'FundGuZhi/GetFundGZList'), headers=parent_headers, proxies=proxy, params=params_infoes, timeout=25)
     if fund_list_res.status_code == 200:
         text_data = re.search('\{(.*)\}', fund_list_res.text, re.S)
         json_data = json.loads(text_data.group())
@@ -86,16 +106,15 @@ def main(total_pages, data_category):
     CALL_BACK = 'jQuery' + (jQuery_version + str(random.random())).replace('.', '')  + '_' + str(int(time.time() * 1000))
     print('等待5秒钟......')
     time.sleep(5)
-    proxies = get_proxies()
     for page in tqdm(range(1, total_pages + 1), desc='Processing '):
         params = params_info(type_info=axis_info(data_category).get('type'), pageIndex=page, callback=CALL_BACK)
-        jijins = tqdm(scrape_data(params, random.choice(proxies)), desc='Data deal ')
+        jijins = tqdm(scrape_data(params, proxy), desc='Data deal ')
         for jijin in jijins:
             collection.insert(jijin)
 
 
 if __name__ == '__main__':
-
+    proxy = get_proxies()
     CATEGORYS_AND_PAGES_INFO = {
         '股票型': 8, 
         '混合型': 25, 
